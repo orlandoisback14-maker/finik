@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Финик — мониторинг собственных средств</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter','system-ui','sans-serif'],
+        display: ['"Plus Jakarta Sans"','Inter','system-ui','sans-serif']
+      }
+    }
+  }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  .num { font-variant-numeric: tabular-nums; }
+  .thin-scroll::-webkit-scrollbar { width:8px; height:8px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background:rgba(16,185,129,0.2); border-radius:9999px; }
+  .thin-scroll::-webkit-scrollbar-thumb:hover { background:rgba(16,185,129,0.35); }
+  .thin-scroll::-webkit-scrollbar-track { background:transparent; }
+
+  @keyframes floatSlow {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%      { transform: translate(40px, -30px) scale(1.06); }
+    66%      { transform: translate(-30px, 20px) scale(0.97); }
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+  }
+  .blob-1 { animation: floatSlow 22s ease-in-out infinite; }
+  .blob-2 { animation: floatSlow 28s ease-in-out infinite reverse; }
+  .blob-3 { animation: floatSlow 26s ease-in-out infinite; }
+
+  .fade-up  { animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .delay-1  { animation-delay: 0.05s; }
+  .delay-2  { animation-delay: 0.10s; }
+  .delay-3  { animation-delay: 0.15s; }
+  .delay-4  { animation-delay: 0.20s; }
+  .delay-5  { animation-delay: 0.25s; }
+  .shake    { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+
+  dialog::backdrop { background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(6px); }
+  dialog[open] { animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+  .dropzone-active { border-color:#10B981 !important; background:#ECFDF5 !important; }
+</style>
+</head>
+<body class="min-h-screen bg-[#FDFBF7] text-slate-800 font-sans">
+
+<!-- ================== ЭКРАН ВХОДА ================== -->
+<div id="lockScreen" class="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900">
+  <div class="pointer-events-none absolute inset-0 overflow-hidden">
+    <div class="absolute -top-32 -left-32 h-[500px] w-[500px] rounded-full bg-emerald-500/25 blur-3xl"></div>
+    <div class="absolute -bottom-32 -right-32 h-[500px] w-[500px] rounded-full bg-amber-400/20 blur-3xl"></div>
+    <div class="absolute inset-0 opacity-30"
+         style="background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.08) 1px, transparent 0); background-size: 32px 32px;"></div>
+  </div>
+
+  <form id="lockForm" class="relative w-full max-w-sm rounded-[2rem] border border-white/20 bg-white/10 p-7 shadow-2xl backdrop-blur-2xl">
+    <div class="mb-6 flex flex-col items-center text-center">
+      <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/40">
+        <svg viewBox="0 0 64 64" class="h-9 w-9" aria-hidden="true">
+          <path d="M33 58c-1-12 0-22 4-31" stroke="white" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+          <path d="M37 27c-7-9-17-11-24-6 6-1 11 1 15 5" fill="white" opacity=".95"/>
+          <path d="M37 27c1-11 9-17 17-15-5 1-9 5-11 10" fill="white" opacity=".85"/>
+          <path d="M37 27c9-5 19-3 23 3-6-3-12-3-17-1" fill="white" opacity=".92"/>
+          <path d="M37 27c-9 2-15 9-15 16 3-5 7-9 13-11" fill="white" opacity=".8"/>
+          <path d="M37 27c4 8 3 16-2 21 1-6 0-11-2-15" fill="white" opacity=".9"/>
+          <circle cx="34" cy="31" r="2.6" fill="#FCD34D"/>
+          <circle cx="40" cy="30" r="2.6" fill="#FCD34D"/>
+          <circle cx="37" cy="35" r="2.6" fill="#FBBF24"/>
+        </svg>
+      </div>
+      <h2 class="mt-4 font-display text-2xl font-extrabold text-white">Финик</h2>
+      <p class="mt-1 text-xs font-medium uppercase tracking-wider text-white/60">Требуется пароль</p>
+    </div>
+
+    <label class="block">
+      <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/70">Пароль</span>
+      <input id="lockPassword" type="password" autocomplete="current-password" required autofocus
+        class="w-full rounded-xl border border-white/20 bg-white/10 px-3.5 py-3 text-sm font-semibold text-white placeholder-white/40 outline-none transition focus:border-emerald-300 focus:bg-white/15 focus:ring-2 focus:ring-emerald-300/30">
+    </label>
+
+    <label class="mt-3 flex cursor-pointer items-center gap-2 text-xs font-medium text-white/70 select-none">
+      <input id="lockRemember" type="checkbox" class="h-4 w-4 rounded border-white/30 bg-white/10 text-emerald-500 focus:ring-emerald-400/40">
+      Запомнить на этом устройстве
+    </label>
+
+    <p id="lockError" class="mt-3 hidden text-xs font-semibold text-rose-300"></p>
+
+    <button type="submit" id="lockBtn"
+      class="mt-5 w-full rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-500/40 transition hover:shadow-emerald-500/60 active:scale-[0.98]">
+      Войти
+    </button>
+
+    <p class="mt-4 text-center text-[10px] leading-relaxed text-white/40">
+      Защита от случайного просмотра. Для полноценной безопасности — серверная версия.
+    </p>
+  </form>
+</div>
+
+<!-- ================== ОСНОВНОЙ КОНТЕНТ ================== -->
+<div id="appRoot" class="hidden">
+<div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+  <div class="absolute inset-0 bg-[#FDFBF7]"></div>
+  <div class="blob-1 absolute -top-48 -left-32 h-[600px] w-[600px] rounded-full bg-emerald-300/30 blur-[100px]"></div>
+  <div class="blob-2 absolute top-1/4 -right-48 h-[700px] w-[700px] rounded-full bg-amber-200/40 blur-[120px]"></div>
+  <div class="blob-3 absolute -bottom-48 left-1/4 h-[600px] w-[600px] rounded-full bg-orange-200/30 blur-[100px]"></div>
+  <div class="absolute inset-0 opacity-50"
+       style="background-image: radial-gradient(circle at 1px 1px, rgba(15,23,42,0.035) 1px, transparent 0); background-size: 32px 32px;"></div>
+</div>
+
+<header class="sticky top-0 z-30 border-b border-white/60 bg-white/60 backdrop-blur-2xl">
+  <div class="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
+    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30">
+      <svg viewBox="0 0 64 64" class="h-7 w-7" aria-hidden="true">
+        <path d="M33 58c-1-12 0-22 4-31" stroke="white" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+        <path d="M37 27c-7-9-17-11-24-6 6-1 11 1 15 5" fill="white" opacity=".95"/>
+        <path d="M37 27c1-11 9-17 17-15-5 1-9 5-11 10" fill="white" opacity=".85"/>
+        <path d="M37 27c9-5 19-3 23 3-6-3-12-3-17-1" fill="white" opacity=".92"/>
+        <path d="M37 27c-9 2-15 9-15 16 3-5 7-9 13-11" fill="white" opacity=".8"/>
+        <path d="M37 27c4 8 3 16-2 21 1-6 0-11-2-15" fill="white" opacity=".9"/>
+        <circle cx="34" cy="31" r="2.6" fill="#FCD34D"/>
+        <circle cx="40" cy="30" r="2.6" fill="#FCD34D"/>
+        <circle cx="37" cy="35" r="2.6" fill="#FBBF24"/>
+      </svg>
+    </div>
+    <div class="min-w-0">
+      <h1 class="font-display text-lg font-extrabold leading-tight tracking-tight text-slate-900 sm:text-xl">Финик</h1>
+      <p class="truncate text-[11px] font-medium uppercase tracking-wider text-slate-400">Мониторинг собственных средств</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <div class="rounded-2xl border border-slate-100 bg-white/80 px-3.5 py-2 text-right shadow-sm">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400">Сегодня</div>
+        <div id="todayLabel" class="text-sm font-semibold num text-slate-900"></div>
+      </div>
+      <button id="logoutBtn" title="Выйти"
+        class="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white/80 text-slate-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">
+
+  <section class="fade-up flex flex-col gap-3 rounded-3xl border border-white/60 bg-white/60 p-3 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-4">
+    <div id="storeTabs" class="flex flex-wrap gap-1.5"></div>
+    <div class="flex items-center gap-2">
+      <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Период</label>
+      <select id="monthSelect" class="rounded-2xl border border-slate-200/60 bg-white/80 px-3.5 py-2 text-sm font-semibold text-slate-800 outline-none backdrop-blur transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"></select>
+    </div>
+  </section>
+
+  <!-- ПУСТОЕ СОСТОЯНИЕ -->
+  <div id="emptyState" class="hidden fade-up mt-4">
+    <div class="rounded-[2rem] border border-white/60 bg-white/60 p-10 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:p-16">
+      <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-700 shadow-lg shadow-emerald-500/10">
+        <svg viewBox="0 0 64 64" class="h-11 w-11" aria-hidden="true">
+          <path d="M33 58c-1-12 0-22 4-31" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <path d="M37 27c-7-9-17-11-24-6 6-1 11 1 15 5" fill="currentColor" opacity=".95"/>
+          <path d="M37 27c1-11 9-17 17-15-5 1-9 5-11 10" fill="currentColor" opacity=".85"/>
+          <path d="M37 27c9-5 19-3 23 3-6-3-12-3-17-1" fill="currentColor" opacity=".92"/>
+          <path d="M37 27c-9 2-15 9-15 16 3-5 7-9 13-11" fill="currentColor" opacity=".8"/>
+          <path d="M37 27c4 8 3 16-2 21 1-6 0-11-2-15" fill="currentColor" opacity=".9"/>
+          <circle cx="34" cy="31" r="2.6" fill="#F59E0B"/>
+          <circle cx="40" cy="30" r="2.6" fill="#F59E0B"/>
+          <circle cx="37" cy="35" r="2.6" fill="#D97706"/>
+        </svg>
+      </div>
+      <h3 class="mt-6 font-display text-2xl font-extrabold text-slate-900">Пока нет данных</h3>
+      <p class="mx-auto mt-2 max-w-md text-sm text-slate-500">
+        За выбранный период записей нет. Добавьте первую запись вручную или загрузите готовый Excel-отчёт из 1С.
+      </p>
+      <div class="mt-6 flex flex-wrap items-center justify-center gap-2">
+        <button id="emptyAddBtn" class="rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:shadow-emerald-500/40 active:scale-[0.98]">
+          + Внести данные
+        </button>
+        <button id="emptyImportBtn" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+          Загрузить Excel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ДАННЫЕ -->
+  <div id="dataContent" class="hidden">
+    <section id="kpiGrid" class="fade-up delay-1 mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"></section>
+
+    <section class="fade-up delay-2 relative mt-4 overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-200 via-emerald-300 to-teal-300 p-6 text-emerald-950 shadow-[0_20px_60px_-20px_rgba(52,211,153,0.45)] sm:p-8">
+      <div class="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/50 blur-3xl"></div>
+      <div class="pointer-events-none absolute -bottom-32 -left-20 h-96 w-96 rounded-full bg-amber-200/50 blur-3xl"></div>
+      <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.4),transparent_55%)]"></div>
+      <div class="relative flex flex-wrap items-start justify-between gap-6">
+        <div>
+          <div class="inline-flex items-center gap-2 rounded-full border border-emerald-950/10 bg-white/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-950 backdrop-blur">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-700 animate-pulse"></span>
+            Собственные средства · конец смены
+          </div>
+          <div id="equityValue" class="mt-4 font-display text-4xl font-extrabold num tracking-tight text-emerald-950 sm:text-6xl"></div>
+          <div id="equityFormula" class="mt-2 text-xs text-emerald-950/65 num"></div>
+        </div>
+        <div class="rounded-2xl border border-emerald-950/10 bg-white/55 px-5 py-4 backdrop-blur">
+          <div class="text-[10px] uppercase tracking-wider text-emerald-950/65">Прирост за период</div>
+          <div id="equityGain" class="mt-1 text-2xl font-bold num"></div>
+          <div id="equityGainPct" class="mt-0.5 text-xs text-emerald-950/65 num"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="fade-up delay-3 mt-4 rounded-3xl border border-white/60 bg-white/70 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:p-6">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-display text-base font-bold text-slate-900 sm:text-lg">Изменение собственных средств</h2>
+        <span id="chartCaption" class="text-xs font-semibold text-slate-400"></span>
+      </div>
+      <div class="h-64 sm:h-80"><canvas id="chart"></canvas></div>
+    </section>
+
+    <section class="fade-up delay-4 mt-4 rounded-3xl border border-white/60 bg-white/70 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:p-6">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="font-display text-base font-bold text-slate-900 sm:text-lg">Ежедневная детализация</h2>
+        <div class="flex items-center gap-3">
+          <span class="hidden text-xs font-semibold text-slate-400 sm:inline">Δ — прирост собственных средств за день</span>
+          <div id="viewToggle" class="inline-flex rounded-2xl border border-slate-200/60 bg-slate-100/80 p-1 backdrop-blur"></div>
+        </div>
+      </div>
+      <div class="thin-scroll overflow-x-auto rounded-2xl border border-slate-200/40 bg-white/40">
+        <table id="dailyTable" class="border-collapse text-sm"></table>
+      </div>
+    </section>
+  </div>
+
+  <p class="mx-auto mt-6 max-w-3xl text-center text-xs text-slate-400">
+    Собственные средства = наличные + безнал + товар на складе − долги поставщикам.
+    Зарплата выдаётся каждый вечер, поэтому в остатке — только аренда, коммуналка и налоги.
+  </p>
+</main>
+
+<!-- КНОПКИ -->
+<div class="fixed bottom-5 right-5 z-30 flex flex-col items-end gap-2">
+  <button id="importFab" title="Загрузить Excel"
+    class="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_25px_-5px_rgba(15,23,42,0.15)] transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 active:scale-95">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    Excel
+  </button>
+  <button id="fab" title="Форма ручного ввода"
+    class="group flex items-center gap-2 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-[0_10px_30px_-5px_rgba(16,185,129,0.55)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_15px_40px_-5px_rgba(16,185,129,0.65)] active:scale-95">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    Внести данные
+  </button>
+</div>
+
+<!-- МОДАЛ: РУЧНОЙ ВВОД -->
+<dialog id="entryModal" class="w-[min(92vw,520px)] rounded-[2rem] border border-white/60 bg-white/95 p-0 shadow-2xl backdrop-blur-2xl">
+  <form id="entryForm" class="p-6 sm:p-7">
+    <div class="mb-5 flex items-start justify-between gap-3">
+      <div>
+        <h3 class="font-display text-xl font-extrabold text-slate-900">Внести показатели</h3>
+        <p id="entrySubtitle" class="mt-0.5 text-xs text-slate-400">Заполните значения на конец смены</p>
+      </div>
+      <button type="button" id="entryClose" class="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Закрыть">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <label class="block">
+        <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Магазин</span>
+        <select id="entryStore" required class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+          <option value="f1">Финик 1</option>
+          <option value="f2">Финик 2</option>
+          <option value="f3">Финик 3</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Дата</span>
+        <input id="entryDate" type="date" required class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+      </label>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <label class="block">
+        <span class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span class="flex h-4 w-4 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+          </span>
+          Наличные
+        </span>
+        <input id="entryCash" type="number" step="0.01" min="0" required placeholder="0" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold num text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+      </label>
+      <label class="block">
+        <span class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span class="flex h-4 w-4 items-center justify-center rounded-md bg-sky-100 text-sky-700">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
+          </span>
+          Безнал
+        </span>
+        <input id="entryBank" type="number" step="0.01" min="0" required placeholder="0" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold num text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+      </label>
+      <label class="block">
+        <span class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span class="flex h-4 w-4 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/></svg>
+          </span>
+          Товар на складе
+        </span>
+        <input id="entryInventory" type="number" step="0.01" min="0" required placeholder="0" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold num text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+      </label>
+      <label class="block">
+        <span class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span class="flex h-4 w-4 items-center justify-center rounded-md bg-rose-100 text-rose-700">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 2 22h20L12 2Z"/></svg>
+          </span>
+          Долги поставщикам
+        </span>
+        <input id="entryDebt" type="number" step="0.01" min="0" required placeholder="0" class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold num text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+      </label>
+    </div>
+
+    <div id="entryPreview" class="mt-4 hidden rounded-2xl border border-emerald-200/60 bg-emerald-50/60 px-4 py-3">
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700/70">Собственные средства</div>
+      <div id="entryPreviewValue" class="mt-0.5 text-lg font-extrabold num text-emerald-800">—</div>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center gap-2">
+      <button type="submit" id="entrySave" class="flex-1 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:shadow-emerald-500/40 active:scale-[0.98]">Сохранить</button>
+      <button type="button" id="entryDelete" class="hidden rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-100">Удалить</button>
+      <button type="button" id="entryCancel" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Отмена</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- МОДАЛ: ИМПОРТ EXCEL -->
+<dialog id="importModal" class="w-[min(92vw,540px)] rounded-[2rem] border border-white/60 bg-white/95 p-0 shadow-2xl backdrop-blur-2xl">
+  <form id="importForm" class="p-6 sm:p-7">
+    <div class="mb-5 flex items-start justify-between gap-3">
+      <div>
+        <h3 class="font-display text-xl font-extrabold text-slate-900">Импорт из Excel</h3>
+        <p class="mt-0.5 text-xs text-slate-400">Загрузите отчёт из 1С за один месяц</p>
+      </div>
+      <button type="button" id="importClose" class="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" aria-label="Закрыть">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <label class="block">
+        <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Магазин</span>
+        <select id="importStore" required class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+          <option value="f1">Финик 1</option>
+          <option value="f2">Финик 2</option>
+          <option value="f3">Финик 3</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Год</span>
+        <input id="importYear" type="number" min="2000" max="2100" required class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold num text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20">
+      </label>
+    </div>
+
+    <label for="importFile" id="importDropzone"
+      class="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-6 py-8 text-center transition hover:border-emerald-400 hover:bg-emerald-50/40">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="mb-2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+      <p class="text-sm font-semibold text-slate-700">Нажмите или перетащите файл сюда</p>
+      <p class="mt-0.5 text-xs text-slate-400">.xlsx или .xls</p>
+      <p id="importFileName" class="mt-2 hidden rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"></p>
+      <input id="importFile" type="file" accept=".xlsx,.xls" class="hidden">
+    </label>
+
+    <div id="importPreview" class="mt-4 hidden rounded-2xl border border-emerald-200/60 bg-emerald-50/60 px-4 py-3">
+      <div class="flex items-start gap-2.5">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-0.5">
+          <path d="M20 6 9 17l-5-5"/>
+        </svg>
+        <div class="min-w-0 text-sm text-emerald-900">
+          <div class="font-semibold">Файл готов к импорту</div>
+          <div class="mt-1 text-xs text-emerald-800">
+            Период: <strong id="importPeriod"></strong><br>
+            Записей: <strong id="importCount"></strong>
+          </div>
+          <div id="importOverwrite" class="mt-1 hidden text-xs font-semibold text-amber-700"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="importError" class="mt-4 hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"></div>
+
+    <div class="mt-6 flex flex-wrap items-center gap-2">
+      <button type="submit" id="importSubmit" disabled class="flex-1 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:shadow-emerald-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50">
+        Импортировать
+      </button>
+      <button type="button" id="importCancel" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Отмена</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="pointer-events-none fixed bottom-24 right-5 z-40 translate-y-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-0 shadow-lg transition-all"></div>
+</div><!-- /appRoot -->
+
+<script>
+/* ================================================================
+   АВТОРИЗАЦИЯ
+   Пароль по умолчанию: finik2026
+   ================================================================ */
+const AUTH_PASSWORD = 'finik2026';
+const AUTH_LS_KEY   = 'finik-auth-v1';
+const AUTH_SS_KEY   = 'finik-auth-session';
+const MAX_ATTEMPTS  = 5;
+const LOCKOUT_MS    = 30_000;
+
+const lockScreen  = document.getElementById('lockScreen');
+const appRoot     = document.getElementById('appRoot');
+const lockForm    = document.getElementById('lockForm');
+const lockPass    = document.getElementById('lockPassword');
+const lockRemember= document.getElementById('lockRemember');
+const lockError   = document.getElementById('lockError');
+const lockBtn     = document.getElementById('lockBtn');
+
+let attempts = 0;
+let lockoutUntil = 0;
+
+function isAuthed(){
+  return localStorage.getItem(AUTH_LS_KEY) === '1'
+      || sessionStorage.getItem(AUTH_SS_KEY) === '1';
+}
+function grantAuth(remember){
+  if (remember) localStorage.setItem(AUTH_LS_KEY, '1');
+  else          sessionStorage.setItem(AUTH_SS_KEY, '1');
+}
+function revokeAuth(){
+  localStorage.removeItem(AUTH_LS_KEY);
+  sessionStorage.removeItem(AUTH_SS_KEY);
+}
+function showApp(){
+  lockScreen.classList.add('hidden');
+  appRoot.classList.remove('hidden');
+  if (!showApp._init){
+    showApp._init = true;
+    initDashboard();
+  }
+}
+function showLock(){
+  appRoot.classList.add('hidden');
+  lockScreen.classList.remove('hidden');
+  lockPass.value = '';
+  lockPass.focus();
+}
+function setLockError(msg){
+  lockError.textContent = msg;
+  lockError.classList.toggle('hidden', !msg);
+  if (msg){
+    lockForm.classList.add('shake');
+    setTimeout(() => lockForm.classList.remove('shake'), 500);
+  }
+}
+function setLockBusy(seconds){
+  if (seconds > 0){
+    lockBtn.disabled = true;
+    lockBtn.textContent = 'Подождите ' + seconds + ' с…';
+    lockBtn.classList.add('opacity-60','cursor-not-allowed');
+  } else {
+    lockBtn.disabled = false;
+    lockBtn.textContent = 'Войти';
+    lockBtn.classList.remove('opacity-60','cursor-not-allowed');
+  }
+}
+function tickLockout(){
+  const left = Math.ceil((lockoutUntil - Date.now()) / 1000);
+  if (left > 0){ setLockBusy(left); setTimeout(tickLockout, 250); }
+  else { setLockBusy(0); setLockError(''); }
+}
+
+lockForm.onsubmit = (e) => {
+  e.preventDefault();
+  if (Date.now() < lockoutUntil){
+    setLockError('Слишком много неверных попыток. Подождите ' + Math.ceil((lockoutUntil - Date.now())/1000) + ' с.');
+    return;
+  }
+  const val = lockPass.value;
+  if (val === AUTH_PASSWORD){
+    setLockError('');
+    attempts = 0;
+    grantAuth(lockRemember.checked);
+    showApp();
+  } else {
+    attempts++;
+    if (attempts >= MAX_ATTEMPTS){
+      lockoutUntil = Date.now() + LOCKOUT_MS;
+      attempts = 0;
+      setLockError('Слишком много неверных попыток. Пауза 30 секунд.');
+      tickLockout();
+    } else {
+      setLockError('Неверный пароль. Осталось попыток: ' + (MAX_ATTEMPTS - attempts));
+    }
+    lockPass.select();
+  }
+};
+
+document.getElementById('logoutBtn').onclick = () => {
+  if (!confirm('Выйти из дашборда?')) return;
+  revokeAuth();
+  showLock();
+};
+
+if (isAuthed()) showApp();
+else showLock();
+
+/* ================================================================
+   ДАШБОРД
+   ================================================================ */
+function initDashboard(){
+
+const fmt = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
+const money = v => fmt.format(Math.round(v)) + ' ₽';
+const signedMoney = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt.format(Math.abs(Math.round(v))) + ' ₽';
+const signedNum = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt.format(Math.abs(Math.round(v)));
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/* ---------- МАГАЗИНЫ ---------- */
+const STORES = [
+  { id:'all', name:'Все магазины' },
+  { id:'f1',  name:'Финик 1' },
+  { id:'f2',  name:'Финик 2' },
+  { id:'f3',  name:'Финик 3' },
+];
+const REAL_STORES = STORES.filter(s => s.id !== 'all');
+const STORE_LABEL = Object.fromEntries(STORES.map(s => [s.id, s.name]));
+
+/* ---------- МЕСЯЦЫ (динамические) ---------- */
+function generateMonths(){
+  const result = [];
+  const now = new Date();
+  for (let offset = -11; offset <= 1; offset++){
+    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = d.toLocaleDateString('ru-RU', { month:'long', year:'numeric' });
+    result.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1), year: d.getFullYear(), month: d.getMonth()+1 });
+  }
+  return result.reverse();
+}
+const MONTHS = generateMonths();
+const NOW = new Date();
+const DEFAULT_MONTH = `${NOW.getFullYear()}-${String(NOW.getMonth()+1).padStart(2,'0')}`;
+
+const VIEWS = [
+  { id:'horizontal', label:'Дни — колонки' },
+  { id:'vertical',   label:'Дни — строки'  },
+  { id:'compact',    label:'Компактный'    },
+];
+
+/* ---------- СОСТОЯНИЕ ---------- */
+const LS_STATE = 'finik-state-v2';
+const state = { store:'all', month: DEFAULT_MONTH, tableView:'horizontal' };
+function loadState(){
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_STATE) || '{}');
+    if (s.store && STORES.some(x => x.id === s.store))         state.store     = s.store;
+    if (s.month && MONTHS.some(x => x.key === s.month))        state.month     = s.month;
+    if (s.tableView && VIEWS.some(x => x.id === s.tableView))  state.tableView = s.tableView;
+  } catch(e) {}
+}
+function saveState(){ try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch(e) {} }
+
+/* ---------- ХРАНИЛИЩЕ ДАННЫХ ---------- */
+const LS_DATA = 'finik-data-v2';
+/* Формат: { f1: { "2026-11-24": {cash,bank,inventory,debt}, ... }, ... } */
+function readAllData(){ try { return JSON.parse(localStorage.getItem(LS_DATA) || '{}'); } catch(e) { return {}; } }
+function writeAllData(obj){ try { localStorage.setItem(LS_DATA, JSON.stringify(obj)); } catch(e) { showToast('Не удалось сохранить (localStorage переполнен)'); } }
+function saveEntry(storeId, dateStr, rec){ const a = readAllData(); if (!a[storeId]) a[storeId] = {}; a[storeId][dateStr] = rec; writeAllData(a); }
+function deleteEntry(storeId, dateStr){ const a = readAllData(); if (a[storeId]) { delete a[storeId][dateStr]; if (!Object.keys(a[storeId]).length) delete a[storeId]; } writeAllData(a); }
+function getEntry(storeId, dateStr){ return (readAllData()[storeId] || {})[dateStr] || null; }
+
+function getData(storeId, monthKey){
+  const all = readAllData();
+  const result = {};
+  const addRow = (dateStr, rec) => {
+    const r = result[dateStr] || { cash:0, bank:0, inventory:0, debt:0 };
+    r.cash += +rec.cash||0; r.bank += +rec.bank||0;
+    r.inventory += +rec.inventory||0; r.debt += +rec.debt||0;
+    result[dateStr] = r;
+  };
+  if (storeId === 'all'){
+    Object.values(all).forEach(dates => Object.entries(dates).forEach(([d, rec]) => { if (d.startsWith(monthKey)) addRow(d, rec); }));
+  } else {
+    Object.entries(all[storeId] || {}).forEach(([d, rec]) => { if (d.startsWith(monthKey)) addRow(d, rec); });
+  }
+  return Object.entries(result).sort(([a],[b]) => a.localeCompare(b)).map(([dateStr, r]) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    const row = { day: date.getDate(), date, cash: r.cash, bank: r.bank, inventory: r.inventory, debt: r.debt };
+    row.equity = row.cash + row.bank + row.inventory - row.debt;
+    return row;
+  });
+}
+
+/* ---------- ИКОНКИ ---------- */
+const ICONS = {
+  cash:  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
+  bank:  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>',
+  box:   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>',
+  debt:  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/><path d="M12 11v6M9.5 14.5 12 17l2.5-2.5"/></svg>'
+};
+const CARD_THEMES = {
+  cash:      { icon: 'from-emerald-400 via-emerald-500 to-emerald-600', shadow: 'shadow-emerald-500/30', glow: 'from-emerald-200/50' },
+  bank:      { icon: 'from-sky-400 via-sky-500 to-blue-600',           shadow: 'shadow-blue-500/30',    glow: 'from-sky-200/50' },
+  inventory: { icon: 'from-amber-400 via-amber-500 to-orange-500',     shadow: 'shadow-amber-500/30',   glow: 'from-amber-200/50' },
+  debt:      { icon: 'from-rose-400 via-rose-500 to-red-600',          shadow: 'shadow-rose-500/30',    glow: 'from-rose-200/50' }
+};
+
+/* ---------- РЕНДЕР: ФИЛЬТРЫ ---------- */
+function renderTabs(){
+  document.getElementById('storeTabs').innerHTML = STORES.map(s => {
+    const active = state.store === s.id;
+    return active
+      ? `<button data-store="${s.id}" class="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition">${s.name}</button>`
+      : `<button data-store="${s.id}" class="rounded-2xl border border-transparent bg-white/40 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-white/80 hover:bg-white/80 hover:text-slate-900">${s.name}</button>`;
+  }).join('');
+  document.querySelectorAll('[data-store]').forEach(b => {
+    b.onclick = () => { state.store = b.dataset.store; saveState(); renderTabs(); renderAll(); };
+  });
+}
+function renderMonthSelect(){
+  const sel = document.getElementById('monthSelect');
+  const hasSaved = MONTHS.some(m => m.key === state.month);
+  const list = hasSaved ? MONTHS : [...MONTHS, { key: state.month, label: state.month }];
+  sel.innerHTML = list.map(m => `<option value="${m.key}" ${m.key===state.month?'selected':''}>${m.label}</option>`).join('');
+  sel.onchange = () => { state.month = sel.value; saveState(); renderAll(); };
+}
+function renderViewToggle(){
+  document.getElementById('viewToggle').innerHTML = VIEWS.map(v => {
+    const active = state.tableView === v.id;
+    return active
+      ? `<button data-view="${v.id}" class="rounded-xl bg-white px-3.5 py-1.5 text-xs font-bold text-emerald-700 shadow-sm transition">${v.label}</button>`
+      : `<button data-view="${v.id}" class="rounded-xl px-3.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:text-slate-800">${v.label}</button>`;
+  }).join('');
+  document.querySelectorAll('[data-view]').forEach(b => {
+    b.onclick = () => { state.tableView = b.dataset.view; saveState(); renderViewToggle(); renderTable(getData(state.store, state.month)); };
+  });
+}
+
+/* ---------- РЕНДЕР: KPI ---------- */
+function renderKpi(data){
+  const first = data[0], last = data[data.length - 1];
+  const defs = [
+    { key:'cash',      label:'Наличные',          icon:ICONS.cash, invert:false },
+    { key:'bank',      label:'Безнал',            icon:ICONS.bank, invert:false },
+    { key:'inventory', label:'Товар на складе',   icon:ICONS.box,  invert:false },
+    { key:'debt',      label:'Долги поставщикам', icon:ICONS.debt, invert:true  },
+  ];
+  document.getElementById('kpiGrid').innerHTML = defs.map(d => {
+    const val = last[d.key];
+    const delta = val - first[d.key];
+    const good = d.invert ? delta < 0 : delta > 0;
+    const theme = CARD_THEMES[d.key];
+    const badge = delta === 0 ? 'bg-slate-100 text-slate-500'
+                  : good ? 'bg-emerald-50 text-emerald-700'
+                         : 'bg-rose-50 text-rose-700';
+    const arrow = delta > 0 ? '↑' : delta < 0 ? '↓' : '•';
+    const absVal = fmt.format(Math.abs(Math.round(delta))) + ' ₽';
+    return `<div class="group relative overflow-hidden rounded-3xl border border-white/60 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_15px_45px_rgba(16,185,129,0.12)]">
+      <div class="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br ${theme.glow} to-transparent blur-2xl"></div>
+      <div class="relative flex items-center justify-between">
+        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.icon} ${theme.shadow} text-white shadow-lg">${d.icon}</div>
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">конец смены</span>
+      </div>
+      <div class="relative mt-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500">${d.label}</div>
+      <div class="relative mt-1 font-display text-2xl font-extrabold num tracking-tight text-slate-900">${money(val)}</div>
+      <div class="relative mt-2 flex items-center gap-2">
+        <span class="inline-flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-xs font-bold num ${badge}">
+          <span>${arrow}</span>${absVal}
+        </span>
+        <span class="text-xs text-slate-400">за период</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderHero(data){
+  const el = id => document.getElementById(id);
+  const first = data[0], last = data[data.length - 1];
+  const gain = last.equity - first.equity;
+  const pct = first.equity ? (gain / first.equity) * 100 : 0;
+  el('equityValue').textContent = money(last.equity);
+  el('equityFormula').textContent =
+    `${fmt.format(last.cash)} + ${fmt.format(last.bank)} + ${fmt.format(last.inventory)} − ${fmt.format(last.debt)} ₽`;
+  const g = el('equityGain');
+  g.textContent = signedMoney(gain);
+  g.className = 'mt-1 text-2xl font-bold num ' + (gain >= 0 ? 'text-emerald-800' : 'text-rose-700');
+  el('equityGainPct').textContent =
+    (gain >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1).replace('.', ',') + ' % к началу периода';
+}
+
+/* ---------- РЕНДЕР: ГРАФИК ---------- */
+let chart = null;
+const chartState = { data: [] };
+function renderChart(data){
+  chartState.data = data;
+  const labels = data.map(r => r.day);
+  const values = data.map(r => r.equity);
+  document.getElementById('chartCaption').textContent =
+    data[0].date.toLocaleDateString('ru-RU', { day:'numeric', month:'long' }) +
+    ' — ' + data[data.length-1].date.toLocaleDateString('ru-RU', { day:'numeric', month:'long', year:'numeric' });
+
+  const canvas = document.getElementById('chart');
+  if (chart){ chart.data.labels = labels; chart.data.datasets[0].data = values; chart.update(); return; }
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 320);
+  grad.addColorStop(0, 'rgba(16,185,129,0.30)');
+  grad.addColorStop(1, 'rgba(16,185,129,0.02)');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: 'Собственные средства',
+      data: values,
+      borderColor: '#059669',
+      borderWidth: 2.5,
+      backgroundColor: grad,
+      fill: true, tension: 0.35,
+      pointRadius: 2.5, pointHoverRadius: 6,
+      pointBackgroundColor: '#F59E0B',
+      pointBorderColor: '#fff',
+      pointBorderWidth: 1.5
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0F172A', padding: 12, cornerRadius: 12, displayColors: false,
+          titleFont: { family: 'Inter', size: 12, weight: '600' },
+          bodyFont: { family: 'Inter', size: 13 },
+          callbacks: {
+            title: (items) => {
+              const r = chartState.data[items[0].dataIndex];
+              return r.date.toLocaleDateString('ru-RU', { day:'2-digit', month:'long', weekday:'short' });
+            },
+            label: (item) => {
+              const i = item.dataIndex;
+              const d = chartState.data;
+              const prev = i > 0 ? d[i-1].equity : null;
+              const lines = ['Собственные средства: ' + money(item.parsed.y)];
+              if (prev != null) lines.push('Δ за день: ' + signedMoney(item.parsed.y - prev));
+              return lines;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#94A3B8', font: { family:'Inter', size:11 }, maxRotation:0, autoSkipPadding:12 } },
+        y: {
+          grid: { color: 'rgba(148,163,184,0.15)' }, border: { display: false },
+          ticks: {
+            color: '#94A3B8', font: { family:'Inter', size:11 },
+            callback: (v) => v >= 1e6 ? (v/1e6).toFixed(2).replace('.', ',') + ' млн'
+                              : v >= 1e3 ? Math.round(v/1e3) + ' тыс.' : v
+          }
+        }
+      }
+    }
+  });
+}
+
+/* ---------- РЕНДЕР ТАБЛИЦЫ ---------- */
+function renderTable(data){
+  if (state.tableView === 'horizontal')    renderTableHorizontal(data);
+  else if (state.tableView === 'vertical') renderTableVertical(data);
+  else                                      renderTableCompact(data);
+}
+function renderTableHorizontal(data){
+  const table = document.getElementById('dailyTable');
+  const head = `<thead><tr>
+    <th class="sticky left-0 z-20 min-w-[150px] bg-white/90 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">Показатель</th>
+    ${data.map(r => `<th class="whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      ${r.date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}
+      <span class="ml-1 normal-case text-slate-400">${r.date.toLocaleDateString('ru-RU',{weekday:'short'})}</span>
+    </th>`).join('')}
+  </tr></thead>`;
+  const defs = [
+    { key:'cash',      label:'Наличные',             cls:'text-slate-700' },
+    { key:'bank',      label:'Безнал',               cls:'text-slate-700' },
+    { key:'inventory', label:'Товар на складе',      cls:'text-slate-700' },
+    { key:'debt',      label:'Долги поставщикам',    cls:'text-rose-600/90' },
+    { key:'equity',    label:'Собственные средства', cls:'font-bold text-slate-900' },
+    { key:'delta',     label:'Δ за день',            cls:'', delta:true },
+  ];
+  const body = defs.map(def => {
+    const cells = data.map((r, idx) => {
+      if (def.delta){
+        const prev = idx > 0 ? data[idx-1].equity : null;
+        if (prev == null) return `<td class="px-3 py-2.5 text-right num text-slate-300">—</td>`;
+        const d = r.equity - prev;
+        const cls = d > 0 ? 'text-emerald-600 font-semibold' : d < 0 ? 'text-rose-600 font-semibold' : 'text-slate-400';
+        return `<td class="whitespace-nowrap px-3 py-2.5 text-right num ${cls}">${signedNum(d)}</td>`;
+      }
+      return `<td class="whitespace-nowrap px-3 py-2.5 text-right num ${def.cls}">${fmt.format(r[def.key])}</td>`;
+    }).join('');
+    return `<tr class="group border-t border-slate-100 hover:bg-emerald-50/40">
+      <td class="sticky left-0 z-10 whitespace-nowrap bg-white/90 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 backdrop-blur group-hover:bg-emerald-50/70">${def.label}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+  table.innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+function renderTableVertical(data){
+  const table = document.getElementById('dailyTable');
+  const head = `<thead class="sticky top-0 z-10 bg-white/90 backdrop-blur"><tr class="text-[11px] uppercase tracking-wider text-slate-500">
+    <th class="px-3 py-2.5 text-left font-semibold">Дата</th>
+    <th class="px-3 py-2.5 text-right font-semibold">Наличные</th>
+    <th class="px-3 py-2.5 text-right font-semibold">Безнал</th>
+    <th class="px-3 py-2.5 text-right font-semibold">Товар</th>
+    <th class="px-3 py-2.5 text-right font-semibold">Долги</th>
+    <th class="px-3 py-2.5 text-right font-semibold">Собств. средства</th>
+    <th class="px-3 py-2.5 text-right font-semibold">Δ за день</th>
+  </tr></thead>`;
+  const rows = [];
+  for (let i = 0; i < data.length; i++){
+    const r = data[i];
+    const prev = i > 0 ? data[i-1].equity : null;
+    const d = prev == null ? null : r.equity - prev;
+    const isLast = i === data.length - 1;
+    const dCls = d == null ? 'text-slate-300' : d > 0 ? 'text-emerald-600' : d < 0 ? 'text-rose-600' : 'text-slate-400';
+    rows.push(`<tr class="border-t border-slate-100 ${isLast ? 'bg-emerald-50/60' : 'hover:bg-slate-50/60'}">
+      <td class="whitespace-nowrap px-3 py-2.5 text-left">
+        <span class="font-semibold num text-slate-800">${r.date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}</span>
+        <span class="ml-1.5 text-[11px] uppercase text-slate-400">${r.date.toLocaleDateString('ru-RU',{weekday:'short'})}</span>
+        ${isLast ? '<span class="ml-2 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">последняя</span>' : ''}
+      </td>
+      <td class="px-3 py-2.5 text-right num text-slate-600">${fmt.format(r.cash)}</td>
+      <td class="px-3 py-2.5 text-right num text-slate-600">${fmt.format(r.bank)}</td>
+      <td class="px-3 py-2.5 text-right num text-slate-600">${fmt.format(r.inventory)}</td>
+      <td class="px-3 py-2.5 text-right num text-rose-600/80">${fmt.format(r.debt)}</td>
+      <td class="px-3 py-2.5 text-right num font-bold text-slate-900">${fmt.format(r.equity)}</td>
+      <td class="px-3 py-2.5 text-right num font-semibold ${dCls}">${d == null ? '—' : signedMoney(d)}</td>
+    </tr>`);
+  }
+  table.innerHTML = head + '<tbody>' + rows.join('') + '</tbody>';
+}
+function renderTableCompact(data){
+  const table = document.getElementById('dailyTable');
+  const head = `<thead><tr>
+    <th class="sticky left-0 z-20 min-w-[150px] bg-white/90 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">Показатель</th>
+    ${data.map(r => `<th class="whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      ${r.date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}
+    </th>`).join('')}
+  </tr></thead>`;
+  const equityRow = `<tr class="border-t border-slate-100">
+    <td class="sticky left-0 z-10 whitespace-nowrap bg-white/90 px-3 py-3 text-left text-sm font-semibold text-slate-700 backdrop-blur">Собственные средства</td>
+    ${data.map(r => `<td class="whitespace-nowrap px-3 py-3 text-right num font-bold text-slate-900">${fmt.format(r.equity)}</td>`).join('')}
+  </tr>`;
+  const deltaRow = `<tr class="border-t border-slate-100">
+    <td class="sticky left-0 z-10 whitespace-nowrap bg-white/90 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 backdrop-blur">Δ за день</td>
+    ${data.map((r, idx) => {
+      const prev = idx > 0 ? data[idx-1].equity : null;
+      if (prev == null) return `<td class="px-3 py-2.5 text-right num text-slate-300">—</td>`;
+      const d = r.equity - prev;
+      const cls = d > 0 ? 'text-emerald-600 font-semibold' : d < 0 ? 'text-rose-600 font-semibold' : 'text-slate-400';
+      return `<td class="whitespace-nowrap px-3 py-2.5 text-right num ${cls}">${signedNum(d)}</td>`;
+    }).join('')}
+  </tr>`;
+  table.innerHTML = head + '<tbody>' + equityRow + deltaRow + '</tbody>';
+}
+
+/* ---------- ОБЩИЙ РЕНДЕР ---------- */
+function renderAll(){
+  const data = getData(state.store, state.month);
+  const emptyState = document.getElementById('emptyState');
+  const dataContent = document.getElementById('dataContent');
+  if (data.length === 0){
+    emptyState.classList.remove('hidden');
+    dataContent.classList.add('hidden');
+  } else {
+    emptyState.classList.add('hidden');
+    dataContent.classList.remove('hidden');
+    renderKpi(data);
+    renderHero(data);
+    renderChart(data);
+    renderTable(data);
+  }
+}
+
+/* ---------- ФОРМА ВВОДА ---------- */
+const entryModal    = document.getElementById('entryModal');
+const entryForm     = document.getElementById('entryForm');
+const fStore        = document.getElementById('entryStore');
+const fDate         = document.getElementById('entryDate');
+const fCash         = document.getElementById('entryCash');
+const fBank         = document.getElementById('entryBank');
+const fInventory    = document.getElementById('entryInventory');
+const fDebt         = document.getElementById('entryDebt');
+const fDelete       = document.getElementById('entryDelete');
+const fSave         = document.getElementById('entrySave');
+const fSubtitle     = document.getElementById('entrySubtitle');
+const fPreview      = document.getElementById('entryPreview');
+const fPreviewVal   = document.getElementById('entryPreviewValue');
+
+function openEntryForm(prefill){
+  const storeId = (prefill && prefill.storeId && prefill.storeId !== 'all')
+    ? prefill.storeId
+    : (state.store !== 'all' ? state.store : 'f1');
+  const dateStr = (prefill && prefill.dateStr) || todayISO();
+  fStore.value = storeId;
+  fDate.value = dateStr;
+  fillEntryFromExisting();
+  updateEntryPreview();
+  entryModal.showModal();
+}
+function fillEntryFromExisting(){
+  const rec = getEntry(fStore.value, fDate.value);
+  if (rec){
+    fCash.value = rec.cash ?? ''; fBank.value = rec.bank ?? '';
+    fInventory.value = rec.inventory ?? ''; fDebt.value = rec.debt ?? '';
+    fSave.textContent = 'Обновить';
+    fDelete.classList.remove('hidden');
+    fSubtitle.textContent = 'Запись за эту дату уже есть — можно изменить или удалить';
+  } else {
+    fCash.value = ''; fBank.value = ''; fInventory.value = ''; fDebt.value = '';
+    fSave.textContent = 'Сохранить';
+    fDelete.classList.add('hidden');
+    fSubtitle.textContent = 'Заполните значения на конец смены';
+  }
+}
+function updateEntryPreview(){
+  const cash = +fCash.value||0, bank = +fBank.value||0;
+  const inv = +fInventory.value||0, debt = +fDebt.value||0;
+  if (!(cash || bank || inv || debt)){ fPreview.classList.add('hidden'); return; }
+  fPreview.classList.remove('hidden');
+  fPreviewVal.textContent = money(cash + bank + inv - debt);
+}
+function closeEntryForm(){ entryModal.close(); }
+
+document.getElementById('fab').onclick = () => openEntryForm();
+document.getElementById('emptyAddBtn').onclick = () => openEntryForm();
+document.getElementById('entryClose').onclick  = closeEntryForm;
+document.getElementById('entryCancel').onclick = closeEntryForm;
+fStore.onchange = () => { fillEntryFromExisting(); updateEntryPreview(); };
+fDate.onchange  = () => { fillEntryFromExisting(); updateEntryPreview(); };
+[fCash, fBank, fInventory, fDebt].forEach(el => el.addEventListener('input', updateEntryPreview));
+
+entryForm.onsubmit = (e) => {
+  e.preventDefault();
+  const storeId = fStore.value;
+  const dateStr = fDate.value;
+  if (!storeId || !dateStr){ showToast('Укажите магазин и дату'); return; }
+  saveEntry(storeId, dateStr, {
+    cash: +fCash.value || 0,
+    bank: +fBank.value || 0,
+    inventory: +fInventory.value || 0,
+    debt: +fDebt.value || 0,
+  });
+  const newMonth = dateStr.slice(0, 7);
+  if (MONTHS.some(m => m.key === newMonth)) state.month = newMonth;
+  saveState();
+  renderMonthSelect();
+  renderAll();
+  closeEntryForm();
+  showToast('Сохранено: ' + STORE_LABEL[storeId] + ', ' + dateStr);
+};
+
+fDelete.onclick = () => {
+  if (!confirm('Удалить запись за ' + fDate.value + ' по магазину ' + fStore.options[fStore.selectedIndex].text + '?')) return;
+  deleteEntry(fStore.value, fDate.value);
+  renderAll();
+  closeEntryForm();
+  showToast('Запись удалена');
+};
+
+entryModal.addEventListener('click', (e) => {
+  const rect = entryForm.getBoundingClientRect();
+  const inDialog = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  if (!inDialog) closeEntryForm();
+});
+
+/* ================================================================
+   ИМПОРТ EXCEL
+   ================================================================ */
+const importModal      = document.getElementById('importModal');
+const importForm       = document.getElementById('importForm');
+const importStore      = document.getElementById('importStore');
+const importYear       = document.getElementById('importYear');
+const importFileInput  = document.getElementById('importFile');
+const importDropzone   = document.getElementById('importDropzone');
+const importFileName   = document.getElementById('importFileName');
+const importPreview    = document.getElementById('importPreview');
+const importPeriod     = document.getElementById('importPeriod');
+const importCount      = document.getElementById('importCount');
+const importOverwrite  = document.getElementById('importOverwrite');
+const importError      = document.getElementById('importError');
+const importSubmit     = document.getElementById('importSubmit');
+
+let pendingImport = null; // { storeId, year, monthNum, monthKey, records:[{dateStr, cash, bank, inventory, debt}], overwriteCount }
+
+function openImportForm(){
+  importFileInput.value = '';
+  importFileName.classList.add('hidden');
+  importPreview.classList.add('hidden');
+  importError.classList.add('hidden');
+  importSubmit.disabled = true;
+  importYear.value = new Date().getFullYear();
+  if (state.store !== 'all') importStore.value = state.store;
+  pendingImport = null;
+  importModal.showModal();
+}
+function closeImportForm(){ importModal.close(); }
+
+document.getElementById('importFab').onclick = openImportForm;
+document.getElementById('emptyImportBtn').onclick = openImportForm;
+document.getElementById('importClose').onclick = closeImportForm;
+document.getElementById('importCancel').onclick = closeImportForm;
+
+// Drag & drop
+['dragenter','dragover'].forEach(evt => importDropzone.addEventListener(evt, (e) => {
+  e.preventDefault(); importDropzone.classList.add('dropzone-active');
+}));
+['dragleave','drop'].forEach(evt => importDropzone.addEventListener(evt, (e) => {
+  e.preventDefault(); importDropzone.classList.remove('dropzone-active');
+}));
+importDropzone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+importFileInput.onchange = () => {
+  const file = importFileInput.files[0];
+  if (file) handleFile(file);
+};
+importYear.onchange = () => {
+  if (importFileInput.files[0]) handleFile(importFileInput.files[0]);
+};
+
+// Русские названия месяцев → номер
+function parseMonthName(str){
+  if (!str) return null;
+  const s = String(str).toLowerCase().trim();
+  const patterns = [
+    [/^янв/, 1], [/^фев/, 2], [/^мар/, 3], [/^апр/, 4],
+    [/^ма[йяе]/, 5], [/^июн/, 6], [/^июл/, 7], [/^авг/, 8],
+    [/^сен/, 9], [/^окт/, 10], [/^ноя/, 11], [/^дек/, 12]
+  ];
+  for (const [re, num] of patterns) if (re.test(s)) return num;
+  return null;
+}
+
+// Прочитать значение ячейки как число
+function readNum(sheet, col1, row1){
+  const ref = XLSX.utils.encode_cell({ c: col1 - 1, r: row1 - 1 });
+  const cell = sheet[ref];
+  if (!cell) return 0;
+  const v = cell.v;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string'){
+    const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'));
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
+// Определить строки по подписям в колонке B
+function detectRows(sheet){
+  const rows = { inventory:null, cash:null, bank:null, debt:null };
+  for (let r = 1; r <= 20; r++){
+    const ref = XLSX.utils.encode_cell({ c:1, r: r-1 });
+    const cell = sheet[ref];
+    if (!cell || cell.v == null) continue;
+    const label = String(cell.v).toLowerCase();
+    if (label.includes('склад') || (label.includes('остатк') && !label.includes('долг'))) rows.inventory ??= r;
+    else if (label.includes('наличн') || label.includes('касса')) rows.cash ??= r;
+    else if (label.includes('карточ') || label.includes('безнал') || label.includes('банк')) rows.bank ??= r;
+    else if (label.includes('долг')) rows.debt ??= r;
+  }
+  if (!rows.inventory) rows.inventory = 4;
+  if (!rows.cash)      rows.cash = 5;
+  if (!rows.bank)      rows.bank = 6;
+  if (!rows.debt)      rows.debt = 7;
+  return rows;
+}
+
+async function handleFile(file){
+  importError.classList.add('hidden');
+  importPreview.classList.add('hidden');
+  importSubmit.disabled = true;
+  pendingImport = null;
+
+  importFileName.textContent = '📎 ' + file.name;
+  importFileName.classList.remove('hidden');
+
+  const storeId = importStore.value;
+  const year = parseInt(importYear.value, 10);
+  if (!year || year < 2000 || year > 2100){
+    importError.textContent = 'Укажите корректный год.';
+    importError.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+
+    // Ищем лист «Активы-Пассивы» либо первый
+    let sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('актив'));
+    if (!sheetName) sheetName = wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+
+    // Месяц из A2
+    const monthCell = sheet['A2'];
+    const monthNum = monthCell ? parseMonthName(monthCell.v) : null;
+    if (!monthNum){
+      importError.textContent = 'Не удалось определить месяц в ячейке A2. Ожидается название месяца («Июль» и т.п.).';
+      importError.classList.remove('hidden');
+      return;
+    }
+
+    // Строки с данными
+    const rows = detectRows(sheet);
+
+    // Сколько дней в месяце
+    const daysInMonth = new Date(year, monthNum, 0).getDate();
+    const monthKey = `${year}-${String(monthNum).padStart(2,'0')}`;
+    const records = [];
+
+    for (let day = 1; day <= daysInMonth; day++){
+      const col = day + 2; // C = 3 = день 1
+      const inventory = readNum(sheet, col, rows.inventory);
+      const cash      = readNum(sheet, col, rows.cash);
+      const bank      = readNum(sheet, col, rows.bank);
+      const debt      = readNum(sheet, col, rows.debt);
+
+      if (!inventory && !cash && !bank && !debt) continue;
+
+      const dateStr = `${year}-${String(monthNum).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      records.push({ dateStr, cash, bank, inventory, debt });
+    }
+
+    if (records.length === 0){
+      importError.textContent = 'В файле не найдено ни одной заполненной строки за этот месяц.';
+      importError.classList.remove('hidden');
+      return;
+    }
+
+    // Сколько записей уже есть — перезапишутся
+    const existing = readAllData()[storeId] || {};
+    const overwriteCount = records.filter(r => existing[r.dateStr]).length;
+
+    // Показываем предпросмотр
+    importPeriod.textContent = new Date(year, monthNum - 1, 1).toLocaleDateString('ru-RU', { month:'long', year:'numeric' });
+    importCount.textContent = records.length + ' шт.';
+    if (overwriteCount > 0){
+      importOverwrite.textContent = 'Из них ' + overwriteCount + ' уже есть — будут перезаписаны.';
+      importOverwrite.classList.remove('hidden');
+    } else {
+      importOverwrite.classList.add('hidden');
+    }
+    importPreview.classList.remove('hidden');
+
+    pendingImport = { storeId, year, monthNum, monthKey, records };
+    importSubmit.disabled = false;
+
+  } catch (err) {
+    console.error(err);
+    importError.textContent = 'Ошибка чтения файла: ' + (err.message || err);
+    importError.classList.remove('hidden');
+  }
+}
+
+importForm.onsubmit = (e) => {
+  e.preventDefault();
+  if (!pendingImport) return;
+
+  const { storeId, monthKey, records } = pendingImport;
+  const all = readAllData();
+  if (!all[storeId]) all[storeId] = {};
+  records.forEach(r => {
+    all[storeId][r.dateStr] = {
+      cash: r.cash, bank: r.bank, inventory: r.inventory, debt: r.debt
+    };
+  });
+  writeAllData(all);
+
+  // Переключиться на импортированный месяц
+  if (MONTHS.some(m => m.key === monthKey)) state.month = monthKey;
+  saveState();
+  renderMonthSelect();
+  renderAll();
+  closeImportForm();
+  showToast('Импортировано ' + records.length + ' записей за ' + STORE_LABEL[storeId]);
+};
+
+importModal.addEventListener('click', (e) => {
+  const rect = importForm.getBoundingClientRect();
+  const inDialog = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  if (!inDialog) closeImportForm();
+});
+
+/* ---------- TOAST ---------- */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('opacity-0','translate-y-2');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.add('opacity-0','translate-y-2'), 2600);
+}
+
+/* ---------- ИНИЦИАЛИЗАЦИЯ ---------- */
+document.getElementById('todayLabel').textContent =
+  new Date().toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' });
+
+loadState();
+renderTabs();
+renderMonthSelect();
+renderViewToggle();
+renderAll();
+
+} // конец initDashboard
+</script>
+</body>
+</html>
